@@ -2,10 +2,12 @@ import BookEvent from "@/components/BookEvent";
 import EventCard from "@/components/EventCard";
 import { IEvent } from "@/database";
 import { getSimilarEventsBySlug } from "@/lib/actions/event.actions";
+import { cacheLife } from "next/cache";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
+
 const EventDetailItem = ({
   icon,
   alt,
@@ -51,24 +53,46 @@ const EventDetailsPage = async ({
 }: {
   params: Promise<{ slug: string }>;
 }) => {
+  "use cache";
+  cacheLife("hours");
+
   const { slug } = await params;
-  const request = await fetch(`${BASE_URL}/api/events/${slug}`);
+
+  let event;
+
+  try {
+    const request = await fetch(`${BASE_URL}/api/events/${slug}`, {
+      next: { revalidate: 10 },
+    });
+    if (!request.ok) {
+      if (request.status === 404) {
+        return notFound();
+      }
+      throw new Error(`Failed to fetch event: ${request.statusText}`);
+    }
+    const response = await request.json();
+    event = response.event;
+    if (!event) {
+      return notFound();
+    }
+  } catch (error) {
+    console.error("Error fetching event data:", error);
+    return notFound();
+  }
 
   const {
-    event: {
-      description,
-      image,
-      overview,
-      date,
-      time,
-      location,
-      mode,
-      agenda,
-      audience,
-      tags,
-      organizer,
-    },
-  } = await request.json();
+    description,
+    image,
+    overview,
+    date,
+    time,
+    location,
+    mode,
+    agenda,
+    audience,
+    tags,
+    organizer,
+  } = event;
 
   if (!description) return notFound();
 
@@ -134,7 +158,7 @@ const EventDetailsPage = async ({
                 Be the first one to book a spot for this event!
               </p>
             )}
-            <BookEvent />
+            <BookEvent eventId={event._id} slug={event.slug} />
           </div>
         </aside>
       </div>
